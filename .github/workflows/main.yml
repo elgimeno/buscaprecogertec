@@ -1,24 +1,33 @@
 name: Compilar EXE
 
-on: [push] # Compila toda vez que você salvar o código
+on: 
+  workflow_dispatch: 
+  push:
+    branches: [ "main" ]
 
 jobs:
   build:
     runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v3
+    - name: Checkout do Código
+      uses: actions/checkout@v4 # Atualizado para v4
+    
     - name: Configurar Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-    - name: Instalar Bibliotecas
+        
+    - name: Instalar Dependencias
       run: |
+        python -m pip install --upgrade pip
         pip install pyinstaller customtkinter
-    - name: Gerar Executável
+        
+    - name: Compilar com PyInstaller
       run: |
         pyinstaller --noconsole --onefile --name "BuscaPreco_LJ27" main.py
-    - name: Salvar Resultado
-      uses: actions/upload-artifact@v3
+        
+    - name: Salvar Executavel
+      uses: actions/upload-artifact@v4 # Versão Corrigida para v4
       with:
-        name: Executavel_LJ27
+        name: BuscaPreco_LJ27_EXE
         path: dist/BuscaPreco_LJ27.exe
