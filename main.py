@@ -1,45 +1,93 @@
 import socket
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import font
 import threading
 import time
 
 IP_GERTEC = "192.168.127.5"
 PORTA = 6500
 
-class BuscaPrecoApp:
+class BuscaPrecoDinamico:
     def __init__(self, root):
         self.root = root
-        self.root.title("BUSCA PREÇO BONANÇA LJ27")
-        self.root.geometry("600x400")
-        self.root.configure(bg="#1a1a1a")
+        self.root.title("SISTEMA DE CONSULTA - LJ 27")
+        self.root.geometry("800x600")
+        self.root.configure(bg="#0f172a")
+        
+        self.is_fullscreen = False
 
-        # Título
-        self.label_status = tk.Label(root, text="ESCANEIE O PRODUTO", font=("Arial", 18, "bold"), fg="white", bg="#1a1a1a")
-        self.label_status.pack(pady=20)
+        # Atalhos de Teclado
+        self.root.bind("<F12>", self.toggle_fullscreen)
+        self.root.bind("<Escape>", self.exit_fullscreen)
+        
+        # Configuração de Redimensionamento Dinâmico (Grid)
+        self.root.grid_rowconfigure(1, weight=1) # O container central cresce
+        self.root.grid_columnconfigure(0, weight=1)
 
-        # Campo de Entrada
-        self.entry = tk.Entry(root, font=("Arial", 24), justify="center", width=20)
-        self.entry.pack(pady=10)
+        # Cabeçalho
+        self.header = tk.Frame(root, bg="#1e293b", height=60)
+        self.header.grid(row=0, column=0, sticky="ew")
+        
+        self.label_titulo = tk.Label(self.header, text="LJ 27 - TERMINAL DE CONSULTA", 
+                                     font=("Segoe UI", 12, "bold"), fg="#94a3b8", bg="#1e293b")
+        self.label_titulo.pack(pady=10)
+
+        # Container Principal
+        self.main_container = tk.Frame(root, bg="#0f172a")
+        self.main_container.grid(row=1, column=0, sticky="nsew", padx=20, pady=20)
+        self.main_container.grid_columnconfigure(0, weight=1)
+
+        # Instrução
+        self.label_status = tk.Label(self.main_container, text="AGUARDANDO LEITURA...", 
+                                      fg="#38bdf8", bg="#0f172a")
+        self.label_status.grid(row=0, column=0, pady=10)
+
+        # Campo de Entrada (EAN)
+        self.entry = tk.Entry(self.main_container, justify="center", bg="#1e293b", 
+                              fg="white", insertbackground="white", bd=0)
+        self.entry.grid(row=1, column=0, pady=10, ipady=10, sticky="ew", padx=100)
         self.entry.bind("<Return>", self.ao_bipar)
         self.entry.focus_set()
 
-        # ÁREA DE RESULTADO (Sempre visível, mas vazia no início)
-        self.label_desc = tk.Label(root, text="", font=("Arial", 16), fg="#aaaaaa", bg="#1a1a1a", wraplength=550)
-        self.label_desc.pack(pady=20)
+        # Área do Produto
+        self.label_desc = tk.Label(self.main_container, text="", fg="white", 
+                                   bg="#0f172a", wraplength=1000)
+        self.label_desc.grid(row=2, column=0, pady=(40, 0))
         
-        self.label_preco = tk.Label(root, text="", font=("Arial", 45, "bold"), fg="#4ade80", bg="#1a1a1a")
-        self.label_preco.pack(pady=10)
+        self.label_preco = tk.Label(self.main_container, text="", fg="#4ade80", bg="#0f172a")
+        self.label_preco.grid(row=3, column=0)
 
-    def log_local(self, msg):
-        with open("DEBUG_INTERFACE.txt", "a") as f:
-            f.write(f"{time.strftime('%H:%M:%S')} - {msg}\n")
+        # Evento para ajustar fontes quando a janela mudar de tamanho
+        self.root.bind("<Configure>", self.ajustar_fontes)
+
+    def ajustar_fontes(self, event=None):
+        # Lógica simples para escalar fontes baseada na altura da janela
+        h = self.root.winfo_height()
+        
+        # Cálculo de tamanhos dinâmicos
+        size_status = max(14, int(h / 30))
+        size_desc = max(18, int(h / 20))
+        size_preco = max(40, int(h / 8))
+        size_ean = max(16, int(h / 35))
+
+        self.label_status.config(font=("Segoe UI", size_status, "bold"))
+        self.label_desc.config(font=("Segoe UI", size_desc, "bold"), wraplength=self.root.winfo_width()-100)
+        self.label_preco.config(font=("Segoe UI", size_preco, "bold"))
+        self.entry.config(font=("Consolas", size_ean))
+
+    def toggle_fullscreen(self, event=None):
+        self.is_fullscreen = True
+        self.root.attributes("-fullscreen", True)
+
+    def exit_fullscreen(self, event=None):
+        self.is_fullscreen = False
+        self.root.attributes("-fullscreen", False)
 
     def ao_bipar(self, event):
         ean = self.entry.get().strip()
         self.entry.delete(0, tk.END)
         if ean:
-            self.label_status.config(text="CONSULTANDO", fg="green")
+            self.label_status.config(text="PESQUISANDO...", fg="#fbbf24")
             threading.Thread(target=self.processar_rede, args=(ean,), daemon=True).start()
 
     def processar_rede(self, ean):
@@ -47,11 +95,10 @@ class BuscaPrecoApp:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(4)
             s.connect((IP_GERTEC, PORTA))
-            
             s.sendall("#ID|01#".encode('cp1252'))
             time.sleep(0.5)
             s.sendall(f"#{ean}#".encode('cp1252'))
-
+            
             resp = b""
             start = time.time()
             while time.time() - start < 3:
@@ -62,39 +109,34 @@ class BuscaPrecoApp:
             s.close()
 
             texto = resp.decode('cp1252', errors='replace')
-            self.log_local(f"Recebido: {texto}")
 
             if "|" in texto:
-                # Pega o trecho que tem o preço
                 for parte in texto.split('#'):
                     if "|" in parte:
                         d, p = parte.split('|')
-                        self.exibir_na_tela(d.strip(), p.strip())
+                        self.atualizar_ui(d.strip(), p.strip(), True)
                         return
             
-            self.exibir_na_tela("PRODUTO NÃO ENCONTRADO", "---")
-        except Exception as e:
-            self.log_local(f"Erro: {str(e)}")
-            self.exibir_na_tela("ERRO DE REDE", "OFFLINE")
+            self.atualizar_ui("PRODUTO NÃO ENCONTRADO", "---", False)
+        except:
+            self.atualizar_ui("ERRO DE CONEXÃO", "OFFLINE", False)
 
-    def exibir_na_tela(self, desc, preco):
-        # Usa o after para garantir que o Tkinter atualize a interface principal
-        self.root.after(0, self._atualizar_labels, desc, preco)
+    def atualizar_ui(self, desc, preco, sucesso):
+        self.root.after(0, self._renderizar, desc, preco, sucesso)
 
-    def _atualizar_labels(self, desc, preco):
-        self.label_status.config(text="ESCANEIE O PRODUTO", fg="white")
+    def _renderizar(self, desc, preco, sucesso):
+        cor_p = "#4ade80" if sucesso else "#f87171"
+        self.label_status.config(text="LEITURA REALIZADA", fg="#94a3b8")
         self.label_desc.config(text=desc.upper())
-        self.label_preco.config(text=preco)
-        self.log_local(f"Interface atualizada com {desc}")
-        
-        # Limpa após 4 segundos
-        self.root.after(4000, self._limpar_tela)
+        self.label_preco.config(text=preco, fg=cor_p)
+        self.root.after(5000, self._reset)
 
-    def _limpar_tela(self):
+    def _reset(self):
+        self.label_status.config(text="AGUARDANDO LEITURA...", fg="#38bdf8")
         self.label_desc.config(text="")
         self.label_preco.config(text="")
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = BuscaPrecoApp(root)
+    app = BuscaPrecoDinamico(root)
     root.mainloop()
