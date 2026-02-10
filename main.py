@@ -1,86 +1,100 @@
 import socket
-import customtkinter as ctk
+import tkinter as tk
+from tkinter import messagebox
 import threading
 import time
 
 IP_GERTEC = "192.168.127.5"
 PORTA = 6500
 
-class BuscaPreco(ctk.CTk):
-    def __init__(self):
-        super().__init__()
-        self.title("Consulta Gertec - LJ 27")
-        self.geometry("500x500")
-        
-        self.label = ctk.CTkLabel(self, text="BIPE O PRODUTO", font=("Arial", 22, "bold"))
-        self.label.pack(pady=30)
-        
-        self.entry = ctk.CTkEntry(self, width=350, height=50, font=("Arial", 26), justify="center")
+class BuscaPrecoApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("BUSCA PREÇO BONANÇA LJ27")
+        self.root.geometry("600x400")
+        self.root.configure(bg="#1a1a1a")
+
+        # Título
+        self.label_status = tk.Label(root, text="ESCANEIE O PRODUTO", font=("Arial", 18, "bold"), fg="white", bg="#1a1a1a")
+        self.label_status.pack(pady=20)
+
+        # Campo de Entrada
+        self.entry = tk.Entry(root, font=("Arial", 24), justify="center", width=20)
         self.entry.pack(pady=10)
-        self.entry.bind("<Return>", self.iniciar_busca)
+        self.entry.bind("<Return>", self.ao_bipar)
         self.entry.focus_set()
 
-        self.modal = ctk.CTkFrame(self, fg_color="#1e293b", corner_radius=20)
-        self.txt_prod = ctk.CTkLabel(self.modal, text="", font=("Arial", 18, "bold"), wraplength=380, text_color="white")
-        self.txt_prod.pack(pady=25)
-        self.txt_price = ctk.CTkLabel(self.modal, text="", font=("Arial", 48, "bold"), text_color="#3b82f6")
-        self.txt_price.pack(pady=10)
+        # ÁREA DE RESULTADO (Sempre visível, mas vazia no início)
+        self.label_desc = tk.Label(root, text="", font=("Arial", 16), fg="#aaaaaa", bg="#1a1a1a", wraplength=550)
+        self.label_desc.pack(pady=20)
+        
+        self.label_preco = tk.Label(root, text="", font=("Arial", 45, "bold"), fg="#4ade80", bg="#1a1a1a")
+        self.label_preco.pack(pady=10)
 
-    def iniciar_busca(self, event):
+    def log_local(self, msg):
+        with open("DEBUG_INTERFACE.txt", "a") as f:
+            f.write(f"{time.strftime('%H:%M:%S')} - {msg}\n")
+
+    def ao_bipar(self, event):
         ean = self.entry.get().strip()
-        self.entry.delete(0, 'end')
+        self.entry.delete(0, tk.END)
         if ean:
-            self.label.configure(text="BUSCANDO...", text_color="#fbbf24")
-            threading.Thread(target=self.conectar_e_buscar, args=(ean,), daemon=True).start()
+            self.label_status.config(text="CONSULTANDO", fg="green")
+            threading.Thread(target=self.processar_rede, args=(ean,), daemon=True).start()
 
-    def conectar_e_buscar(self, ean):
+    def processar_rede(self, ean):
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(5)
+            s.settimeout(4)
             s.connect((IP_GERTEC, PORTA))
-
-            # Handshake e Consulta (Protocolo validado pelo log)
+            
             s.sendall("#ID|01#".encode('cp1252'))
-            time.sleep(0.6)
+            time.sleep(0.5)
             s.sendall(f"#{ean}#".encode('cp1252'))
 
-            # Captura de dados
-            resposta_bruta = b""
+            resp = b""
             start = time.time()
             while time.time() - start < 3:
                 chunk = s.recv(1024)
                 if not chunk: break
-                resposta_bruta += chunk
-                if b"|" in resposta_bruta: break
+                resp += chunk
+                if b"|" in resp: break
             s.close()
 
-            texto = resposta_bruta.decode('cp1252', errors='replace')
+            texto = resp.decode('cp1252', errors='replace')
+            self.log_local(f"Recebido: {texto}")
 
-            # NOVA LÓGICA DE FILTRO: Procura o PIPE em qualquer lugar da string
             if "|" in texto:
-                # Divide a string e procura o pedaço que contém o "|"
-                partes = texto.split('#')
-                for p in partes:
-                    if "|" in p:
-                        dados = p.split('|')
-                        self.atualizar_tela(dados[0].strip(), dados[1].strip())
+                # Pega o trecho que tem o preço
+                for parte in texto.split('#'):
+                    if "|" in parte:
+                        d, p = parte.split('|')
+                        self.exibir_na_tela(d.strip(), p.strip())
                         return
-
-            self.atualizar_tela("NÃO ENCONTRADO", "---", "orange")
             
+            self.exibir_na_tela("PRODUTO NÃO ENCONTRADO", "---")
         except Exception as e:
-            self.atualizar_tela("ERRO DE REDE", "OFFLINE", "red")
+            self.log_local(f"Erro: {str(e)}")
+            self.exibir_na_tela("ERRO DE REDE", "OFFLINE")
 
-    def atualizar_tela(self, desc, preco, cor_texto="white"):
-        self.after(0, self._exibir, desc, preco, cor_texto)
+    def exibir_na_tela(self, desc, preco):
+        # Usa o after para garantir que o Tkinter atualize a interface principal
+        self.root.after(0, self._atualizar_labels, desc, preco)
 
-    def _exibir(self, desc, preco, cor_texto):
-        self.label.configure(text="BIPE O PRODUTO", text_color="white")
-        self.txt_prod.configure(text=desc.upper())
-        self.txt_price.configure(text=preco, text_color="#3b82f6" if preco != "---" else "red")
-        self.modal.place(relx=0.5, rely=0.6, anchor="center", width=440, height=280)
-        self.after(3000, lambda: self.modal.place_forget())
+    def _atualizar_labels(self, desc, preco):
+        self.label_status.config(text="ESCANEIE O PRODUTO", fg="white")
+        self.label_desc.config(text=desc.upper())
+        self.label_preco.config(text=preco)
+        self.log_local(f"Interface atualizada com {desc}")
+        
+        # Limpa após 4 segundos
+        self.root.after(4000, self._limpar_tela)
+
+    def _limpar_tela(self):
+        self.label_desc.config(text="")
+        self.label_preco.config(text="")
 
 if __name__ == "__main__":
-    app = BuscaPreco()
-    app.mainloop()
+    root = tk.Tk()
+    app = BuscaPrecoApp(root)
+    root.mainloop()
