@@ -10,7 +10,7 @@ PORTA = 6500
 class BuscaPrecoDinamico:
     def __init__(self, root):
         self.root = root
-        self.root.title("SISTEMA DE CONSULTA - LJ 27")
+        self.root.title("TERMINAL DE CONSULTA - BONANÇA 27")
         self.root.geometry("800x600")
         self.root.configure(bg="#0f172a")
         
@@ -28,7 +28,7 @@ class BuscaPrecoDinamico:
         self.header = tk.Frame(root, bg="#1e293b", height=60)
         self.header.grid(row=0, column=0, sticky="ew")
         
-        self.label_titulo = tk.Label(self.header, text="LJ 27 - TERMINAL DE CONSULTA", 
+        self.label_titulo = tk.Label(self.header, text="TERMINAL DE CONSULTA - BONANÇA 27", 
                                      font=("Segoe UI", 12, "bold"), fg="#94a3b8", bg="#1e293b")
         self.label_titulo.pack(pady=10)
 
@@ -38,7 +38,7 @@ class BuscaPrecoDinamico:
         self.main_container.grid_columnconfigure(0, weight=1)
 
         # Instrução
-        self.label_status = tk.Label(self.main_container, text="AGUARDANDO LEITURA...", 
+        self.label_status = tk.Label(self.main_container, text="APROXIME O PRODUTO DO LEITOR", 
                                       fg="#38bdf8", bg="#0f172a")
         self.label_status.grid(row=0, column=0, pady=10)
 
@@ -87,7 +87,7 @@ class BuscaPrecoDinamico:
         ean = self.entry.get().strip()
         self.entry.delete(0, tk.END)
         if ean:
-            self.label_status.config(text="PESQUISANDO...", fg="#fbbf24")
+            self.label_status.config(text="CONSULTANDO", fg="#fbbf24")
             threading.Thread(target=self.processar_rede, args=(ean,), daemon=True).start()
 
     def processar_rede(self, ean):
@@ -132,7 +132,7 @@ class BuscaPrecoDinamico:
         self.root.after(5000, self._reset)
 
     def _reset(self):
-        self.label_status.config(text="AGUARDANDO LEITURA...", fg="#38bdf8")
+        self.label_status.config(text="APROXIME O PRODUTO DO LEITOR", fg="#38bdf8")
         self.label_desc.config(text="")
         self.label_preco.config(text="")
 
