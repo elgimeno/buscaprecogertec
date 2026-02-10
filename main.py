@@ -12,70 +12,86 @@ class BuscaPreco(ctk.CTk):
         self.title("Consulta Gertec - LJ 27")
         self.geometry("500x500")
         
-        self.label = ctk.CTkLabel(self, text="BIPE O PRODUTO", font=("Arial", 20, "bold"))
-        self.label.pack(pady=20)
+        self.label = ctk.CTkLabel(self, text="BIPE O PRODUTO", font=("Arial", 22, "bold"))
+        self.label.pack(pady=30)
         
-        self.entry = ctk.CTkEntry(self, width=300, font=("Arial", 24), justify="center")
+        self.entry = ctk.CTkEntry(self, width=350, height=50, font=("Arial", 26), justify="center")
         self.entry.pack(pady=10)
         self.entry.bind("<Return>", self.iniciar_busca)
         self.entry.focus_set()
 
-        self.modal = ctk.CTkFrame(self, fg_color="#1e293b", corner_radius=15)
-        self.txt_prod = ctk.CTkLabel(self.modal, text="", font=("Arial", 16, "bold"), wraplength=350)
-        self.txt_prod.pack(pady=20)
-        self.txt_price = ctk.CTkLabel(self.modal, text="", font=("Arial", 40, "bold"), text_color="#3b82f6")
+        self.modal = ctk.CTkFrame(self, fg_color="#1e293b", corner_radius=20)
+        self.txt_prod = ctk.CTkLabel(self.modal, text="", font=("Arial", 18, "bold"), wraplength=380)
+        self.txt_prod.pack(pady=25)
+        self.txt_price = ctk.CTkLabel(self.modal, text="", font=("Arial", 48, "bold"), text_color="#3b82f6")
         self.txt_price.pack(pady=10)
 
     def iniciar_busca(self, event):
         ean = self.entry.get().strip()
         self.entry.delete(0, 'end')
         if ean:
-            self.label.configure(text="CONSULTANDO...", text_color="yellow")
+            self.label.configure(text="BUSCANDO...", text_color="#fbbf24")
             threading.Thread(target=self.conectar_e_buscar, args=(ean,), daemon=True).start()
 
     def conectar_e_buscar(self, ean):
         try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(5) # Aumentado para 5s
-                s.connect((IP_GERTEC, PORTA))
-                
-                s.sendall(b"#ID|01#")
-                time.sleep(0.6)
-                s.sendall(f"#{ean}#".encode('latin-1'))
-                
-                # Leitura contínua para ignorar os #live?
-                dados_acumulados = ""
-                start_time = time.time()
-                while time.time() - start_time < 3: # Tenta ler por 3 segundos
-                    chunk = s.recv(1024).decode('latin-1', errors='ignore')
-                    dados_acumulados += chunk
-                    if "|" in dados_acumulados:
-                        break
-                
-                # FILTRO DE RESULTADO
-                if "|" in dados_acumulados:
-                    # Pega a última parte que contém o pipe
-                    partes = [p for p in dados_acumulados.split('#') if "|" in p]
-                    if partes:
-                        item = partes[-1].split('|')
-                        self.atualizar_tela(item[0], item[1])
-                        return
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(5) 
+            s.connect((IP_GERTEC, PORTA))
+            
+            # 1. Handshake Identêntico ao PowerShell
+            s.sendall("#ID|01#".encode('cp1252'))
+            time.sleep(0.6) 
 
-                self.atualizar_tela("NÃO LOCALIZADO", "---", "red")
+            # 2. Envio do Código
+            s.sendall(f"#{ean}#".encode('cp1252'))
+            
+            # 3. Leitura Acumulada Agressiva
+            resposta_bruta = ""
+            timeout_leitura = time.time() + 4 # 4 segundos para o servidor responder
+            
+            while time.time() < timeout_leitura:
+                try:
+                    s.setblocking(False) # Não trava se não houver nada no buffer
+                    import select
+                    pronto = select.select([s], [], [], 0.5)
+                    if pronto[0]:
+                        parte = s.recv(4096).decode('cp1252', errors='ignore')
+                        if not parte: break
+                        resposta_bruta += parte
+                        # Se achou o preço, encerra o loop imediatamente
+                        if "|" in resposta_bruta: break
+                    else:
+                        # Se já temos algo e o servidor parou de mandar, processamos
+                        if resposta_bruta: break 
+                except:
+                    break
+            
+            s.close()
+
+            # 4. Tratamento do Resultado com Fallback
+            if "|" in resposta_bruta:
+                # Limpa os #live? e pega a parte do preço
+                fatias = [f for f in resposta_bruta.split('#') if "|" in f]
+                item = fatias[-1].split('|')
+                self.atualizar_tela(item[0].strip(), item[1].strip())
+            elif "live?" in resposta_bruta:
+                self.atualizar_tela("SERVIDOR BUSY (LIVE?)", "TENTE DE NOVO", "orange")
+            else:
+                self.atualizar_tela("PRODUTO NÃO CADASTRADO", "---", "orange")
+
         except Exception as e:
-            self.atualizar_tela("ERRO DE REDE", "OFFLINE", "red")
+            self.atualizar_tela("ERRO DE CONEXÃO", "OFFLINE", "red")
 
-    def atualizar_tela(self, desc, preco, cor="white"):
-        self.after(0, self._exibir, desc, preco, cor)
+    def atualizar_tela(self, desc, preco, cor_texto="white"):
+        self.after(0, self._exibir, desc, preco, cor_texto)
 
-    def _exibir(self, desc, preco, cor):
+    def _exibir(self, desc, preco, cor_texto):
         self.label.configure(text="BIPE O PRODUTO", text_color="white")
-        self.txt_prod.configure(text=desc.upper(), text_color="white")
+        self.txt_prod.configure(text=desc.upper(), text_color=cor_texto)
         self.txt_price.configure(text=preco)
-        self.modal.place(relx=0.5, rely=0.6, anchor="center", width=400, height=250)
-        # Se for erro, fica mais tempo na tela (4s), se for preço, 2.5s
-        tempo = 4000 if preco == "---" or preco == "OFFLINE" else 2500
-        self.after(tempo, lambda: self.modal.place_forget())
+        self.modal.place(relx=0.5, rely=0.6, anchor="center", width=440, height=280)
+        self.after(3000, lambda: self.modal.place_forget())
 
 if __name__ == "__main__":
     app = BuscaPreco()
