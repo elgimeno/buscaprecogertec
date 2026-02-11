@@ -1,4 +1,4 @@
-name: Compilar EXE LJ27
+name: Compilar Terminal LJ27 (Slideshow + Relogio)
 
 on: 
   workflow_dispatch: 
@@ -21,14 +21,15 @@ jobs:
     - name: Instalar Dependencias
       run: |
         python -m pip install --upgrade pip
-        pip install pyinstaller
+        pip install pyinstaller pillow requests
 
     - name: Compilar com PyInstaller (Modo Pasta)
+      # Adicionamos --collect-all para garantir que o Pillow e Requests sejam incluídos corretamente
       run: |
-        pyinstaller --noconsole --onedir --name "BuscaPreco_LJ27" main.py
+        pyinstaller --noconsole --onedir --name "Terminal_LJ27" main.py
 
     - name: Salvar Pasta do Executavel
       uses: actions/upload-artifact@v4
       with:
-        name: BuscaPreco_LJ27_Completo
-        path: dist/BuscaPreco_LJ27/
+        name: Terminal_LJ27_Completo
+        path: dist/Terminal_LJ27/
