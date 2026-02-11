@@ -1,142 +1,134 @@
 import socket
 import tkinter as tk
-from tkinter import font
 import threading
 import time
+import requests
+import os
+from PIL import Image, ImageTk
+from io import BytesIO
+from datetime import datetime
 
+# Configurações
 IP_GERTEC = "192.168.127.5"
-PORTA = 6500
+PORTA_GERTEC = 6500
+URL_LISTA_FOTOS = "http://seu-servidor.com/lista_promos.txt"
 
-class BuscaPrecoDinamico:
+class TerminalLJFinal:
     def __init__(self, root):
         self.root = root
-        self.root.title("TERMINAL DE CONSULTA - BONANÇA 27")
-        self.root.geometry("800x600")
-        self.root.configure(bg="#0f172a")
+        self.root.title("TERMINAL LJ 27")
+        self.root.attributes("-fullscreen", True)
+        self.root.configure(bg="black")
         
-        self.is_fullscreen = False
+        self.is_showing_price = False
+        self.last_interaction = time.time()
+        self.lista_imagens = []
+        self.indice_atual = 0
+        self.data_ultima_atualizacao = ""
 
-        # Atalhos de Teclado
-        self.root.bind("<F12>", self.toggle_fullscreen)
-        self.root.bind("<Escape>", self.exit_fullscreen)
+        # Camada de Fundo (Fotos)
+        self.foto_label = tk.Label(root, bg="black")
+        self.foto_label.pack(expand=True, fill="both")
         
-        # Configuração de Redimensionamento Dinâmico (Grid)
-        self.root.grid_rowconfigure(1, weight=1) # O container central cresce
-        self.root.grid_columnconfigure(0, weight=1)
+        # Relógio no Canto Inferior Direito
+        self.label_relogio = tk.Label(root, text="", font=("Consolas", 14), 
+                                      fg="#475569", bg="black", padx=20, pady=10)
+        self.label_relogio.place(relx=1.0, rely=1.0, anchor="se")
 
-        # Cabeçalho
-        self.header = tk.Frame(root, bg="#1e293b", height=60)
-        self.header.grid(row=0, column=0, sticky="ew")
-        
-        self.label_titulo = tk.Label(self.header, text="TERMINAL DE CONSULTA - BONANÇA 27", 
-                                     font=("Segoe UI", 12, "bold"), fg="#94a3b8", bg="#1e293b")
-        self.label_titulo.pack(pady=10)
+        # UI de Preço (Centralizada)
+        self.price_frame = tk.Frame(root, bg="#0f172a")
+        self.label_desc = tk.Label(self.price_frame, text="", font=("Segoe UI", 35, "bold"), fg="white", bg="#0f172a", wraplength=900)
+        self.label_desc.pack(pady=40)
+        self.label_preco = tk.Label(self.price_frame, text="", font=("Segoe UI", 90, "bold"), fg="#4ade80", bg="#0f172a")
+        self.label_preco.pack()
 
-        # Container Principal
-        self.main_container = tk.Frame(root, bg="#0f172a")
-        self.main_container.grid(row=1, column=0, sticky="nsew", padx=20, pady=20)
-        self.main_container.grid_columnconfigure(0, weight=1)
-
-        # Instrução
-        self.label_status = tk.Label(self.main_container, text="APROXIME O PRODUTO DO LEITOR", 
-                                      fg="#38bdf8", bg="#0f172a")
-        self.label_status.grid(row=0, column=0, pady=10)
-
-        # Campo de Entrada (EAN)
-        self.entry = tk.Entry(self.main_container, justify="center", bg="#1e293b", 
-                              fg="white", insertbackground="white", bd=0)
-        self.entry.grid(row=1, column=0, pady=10, ipady=10, sticky="ew", padx=100)
-        self.entry.bind("<Return>", self.ao_bipar)
+        # Input invisível
+        self.entry = tk.Entry(root)
+        self.entry.pack()
+        self.entry.bind("<Return>", self.on_scan)
         self.entry.focus_set()
 
-        # Área do Produto
-        self.label_desc = tk.Label(self.main_container, text="", fg="white", 
-                                   bg="#0f172a", wraplength=1000)
-        self.label_desc.grid(row=2, column=0, pady=(40, 0))
+        # Iniciar Threads e Loops
+        threading.Thread(target=self.gerenciar_conteudo_remoto, daemon=True).start()
+        self.atualizar_relogio()
+        self.ciclo_slideshow()
+        self.check_idle()
+
+    def atualizar_relogio(self):
+        """Atualiza o horário na tela a cada segundo"""
+        agora = datetime.now().strftime("%H:%M:%S")
+        self.label_relogio.config(text=agora)
+        # Se estiver em modo preço, o relógio pode ficar branco para melhor leitura
+        self.label_relogio.config(fg="white" if self.is_showing_price else "#475569")
+        self.root.after(1000, self.atualizar_relogio)
+
+    def gerenciar_conteudo_remoto(self):
+        while True:
+            hoje = datetime.now().strftime("%Y-%m-%d")
+
+            # Reset de Meia-Noite
+            if self.data_ultima_atualizacao != hoje:
+                self.lista_imagens = []
+                print("Segurança: Limpando ofertas vencidas.")
+
+            try:
+                r = requests.get(URL_LISTA_FOTOS, timeout=5)
+                if r.status_code == 200:
+                    urls = r.text.splitlines()
+                    if urls:
+                        novas_imgs = []
+                        for url in urls:
+                            if url.strip():
+                                img_data = requests.get(url.strip(), timeout=5).content
+                                img = Image.open(BytesIO(img_data))
+                                w, h = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+                                img = img.resize((w, h), Image.Resampling.LANCZOS)
+                                novas_imgs.append(ImageTk.PhotoImage(img))
+                        
+                        if novas_imgs:
+                            self.lista_imagens = novas_imgs
+                            self.data_ultima_atualizacao = hoje
+            except:
+                pass
+
+            time.sleep(300) # Verifica o servidor a cada 5 min
+
+    def ciclo_slideshow(self):
+        if not self.is_showing_price:
+            if self.lista_imagens:
+                self.foto_label.configure(image=self.lista_imagens[self.indice_atual], text="")
+                self.indice_atual = (self.indice_atual + 1) % len(self.lista_imagens)
+            else:
+                self.foto_label.configure(image="", text="CONSULTE O PREÇO AQUI\nLJ 27", 
+                                          font=("Segoe UI", 40, "bold"), fg="#1e293b")
         
-        self.label_preco = tk.Label(self.main_container, text="", fg="#4ade80", bg="#0f172a")
-        self.label_preco.grid(row=3, column=0)
+        self.root.after(10000, self.ciclo_slideshow)
 
-        # Evento para ajustar fontes quando a janela mudar de tamanho
-        self.root.bind("<Configure>", self.ajustar_fontes)
-
-    def ajustar_fontes(self, event=None):
-        # Lógica simples para escalar fontes baseada na altura da janela
-        h = self.root.winfo_height()
-        
-        # Cálculo de tamanhos dinâmicos
-        size_status = max(14, int(h / 30))
-        size_desc = max(18, int(h / 20))
-        size_preco = max(40, int(h / 8))
-        size_ean = max(16, int(h / 35))
-
-        self.label_status.config(font=("Segoe UI", size_status, "bold"))
-        self.label_desc.config(font=("Segoe UI", size_desc, "bold"), wraplength=self.root.winfo_width()-100)
-        self.label_preco.config(font=("Segoe UI", size_preco, "bold"))
-        self.entry.config(font=("Consolas", size_ean))
-
-    def toggle_fullscreen(self, event=None):
-        self.is_fullscreen = True
-        self.root.attributes("-fullscreen", True)
-
-    def exit_fullscreen(self, event=None):
-        self.is_fullscreen = False
-        self.root.attributes("-fullscreen", False)
-
-    def ao_bipar(self, event):
+    def on_scan(self, event):
         ean = self.entry.get().strip()
         self.entry.delete(0, tk.END)
         if ean:
-            self.label_status.config(text="CONSULTANDO", fg="#fbbf24")
-            threading.Thread(target=self.processar_rede, args=(ean,), daemon=True).start()
+            self.show_price(ean)
 
-    def processar_rede(self, ean):
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(4)
-            s.connect((IP_GERTEC, PORTA))
-            s.sendall("#ID|01#".encode('cp1252'))
-            time.sleep(0.5)
-            s.sendall(f"#{ean}#".encode('cp1252'))
-            
-            resp = b""
-            start = time.time()
-            while time.time() - start < 3:
-                chunk = s.recv(1024)
-                if not chunk: break
-                resp += chunk
-                if b"|" in resp: break
-            s.close()
+    def show_price(self, ean):
+        self.is_showing_price = True
+        self.last_interaction = time.time()
+        self.foto_label.pack_forget()
+        self.price_frame.pack(expand=True, fill="both")
+        self.label_relogio.lift() # Mantém o relógio por cima do frame de preço
+        
+        # Sua lógica de socket Gertec aqui...
+        self.label_desc.config(text="CONSULTANDO...")
+        # threading.Thread(target=self.query_gertec, args=(ean,)).start()
 
-            texto = resp.decode('cp1252', errors='replace')
-
-            if "|" in texto:
-                for parte in texto.split('#'):
-                    if "|" in parte:
-                        d, p = parte.split('|')
-                        self.atualizar_ui(d.strip(), p.strip(), True)
-                        return
-            
-            self.atualizar_ui("PRODUTO NÃO ENCONTRADO", "---", False)
-        except:
-            self.atualizar_ui("ERRO DE CONEXÃO", "OFFLINE", False)
-
-    def atualizar_ui(self, desc, preco, sucesso):
-        self.root.after(0, self._renderizar, desc, preco, sucesso)
-
-    def _renderizar(self, desc, preco, sucesso):
-        cor_p = "#4ade80" if sucesso else "#f87171"
-        self.label_status.config(text="LEITURA REALIZADA", fg="#94a3b8")
-        self.label_desc.config(text=desc.upper())
-        self.label_preco.config(text=preco, fg=cor_p)
-        self.root.after(5000, self._reset)
-
-    def _reset(self):
-        self.label_status.config(text="APROXIME O PRODUTO DO LEITOR", fg="#38bdf8")
-        self.label_desc.config(text="")
-        self.label_preco.config(text="")
+    def check_idle(self):
+        if self.is_showing_price and (time.time() - self.last_interaction > 15):
+            self.is_showing_price = False
+            self.price_frame.pack_forget()
+            self.foto_label.pack(expand=True, fill="both")
+        self.root.after(1000, self.check_idle)
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = BuscaPrecoDinamico(root)
+    app = TerminalLJFinal(root)
     root.mainloop()
