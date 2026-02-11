@@ -1,4 +1,4 @@
-name: Compilar Terminal LJ27 (Slideshow + Relogio)
+name: Compilar Terminal LJ27 Final
 
 on: 
   workflow_dispatch: 
@@ -23,10 +23,12 @@ jobs:
         python -m pip install --upgrade pip
         pip install pyinstaller pillow requests
 
-    - name: Compilar com PyInstaller (Modo Pasta)
-      # Adicionamos --collect-all para garantir que o Pillow e Requests sejam incluídos corretamente
+    - name: Compilar com PyInstaller
+      # --noconsole: esconde a janela preta de fundo
+      # --onedir: cria a pasta (melhor para o WithSecure)
+      # --collect-all: garante que todas as sub-dependências sejam incluídas
       run: |
-        pyinstaller --noconsole --onedir --name "Terminal_LJ27" main.py
+        pyinstaller --noconsole --onedir --collect-all requests --collect-all PIL --name "Terminal_LJ27" main.py
 
     - name: Salvar Pasta do Executavel
       uses: actions/upload-artifact@v4
