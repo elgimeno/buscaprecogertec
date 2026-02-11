@@ -10,7 +10,7 @@ from datetime import datetime
 # --- CONFIGURAÇÕES ---
 IP_GERTEC = "192.168.127.5"
 PORTA_GERTEC = 6500
-URL_LISTA_TXT = "http://seu-servidor.com/lista_promos.txt" # Altere para seu link real
+URL_LISTA_TXT = "https://drive.usercontent.google.com/download?id=1C-c-bGxl_p0rCjOEq_Nw9FK2H2itOyzw&export=download&authuser=0&confirm=t&uuid=7b5e4496-4284-4d90-b63f-93eeaa7f7dc9&at=APcXIO3QW8iIJ3ONowEZrdMqXbZw:1770835577993" # Altere para seu link real
 
 class TerminalLJ27:
     def __init__(self, root):
@@ -151,7 +151,7 @@ class TerminalLJ27:
                 self.foto_label.configure(image=self.lista_fotos[self.indice_atual], text="")
                 self.indice_atual = (self.indice_atual + 1) % len(self.lista_fotos)
             else:
-                self.foto_label.configure(image="", text="BIPE O PRODUTO\nCONSULTE O PREÇO", 
+                self.foto_label.configure(image="", text="APROXIME O PRODUTO DO LEITOR\nCONSULTE O PREÇO", 
                                           font=("Segoe UI", 40, "bold"), fg="#1e293b")
         self.root.after(10000, self.ciclo_slideshow)
 
